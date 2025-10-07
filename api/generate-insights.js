@@ -5,6 +5,10 @@ export default async function handler(req, res) {
     return res.status(405).end('Method Not Allowed');
   }
 
+  // --- NEW DEBUGGING LINE ---
+  // This will show up in your Vercel logs so we can confirm the key is loaded.
+  console.log('GEMINI_API_KEY loaded:', process.env.GEMINI_API_KEY ? 'Yes' : 'No');
+
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
   // Check if the API key is configured on the server
@@ -40,3 +44,4 @@ export default async function handler(req, res) {
     res.status(500).json({ error: error.message });
   }
 }
+
