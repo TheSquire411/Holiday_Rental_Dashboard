@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { FileText, BrainCircuit, LayoutDashboard, Hotel, AlertTriangle } from 'lucide-react';
+import { FileText, BrainCircuit, LayoutDashboard, Hotel, AlertTriangle, RefreshCw } from 'lucide-react';
 
 // --- Helper Functions & Constants ---
 
@@ -90,7 +90,6 @@ export default function App() {
             .map(b => ({
                 arrival: b.arrival,
                 nights: (new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24),
-                // FIX: Changed to use 'total_amount' from API
                 totalAmount: b.total_amount,
                 source: b.source
             }));
@@ -128,7 +127,6 @@ export default function App() {
         if (!bookings) return {}; // Guard against null/undefined bookings
         const confirmedBookings = bookings.filter(b => b.status === 'Booked');
         
-        // FIX: Changed to use 'total_amount' from API
         const totalRevenue = confirmedBookings.reduce((acc, b) => acc + (b.total_amount || 0), 0);
         
         const totalNights = confirmedBookings.reduce((acc, b) => acc + ((new Date(b.departure) - new Date(b.arrival)) / (1000 * 3600 * 24)), 0);
@@ -146,7 +144,6 @@ export default function App() {
             const source = booking.source || 'Unknown';
             if (!channelData[source]) channelData[source] = { name: source, revenue: 0 };
             
-            // FIX: Changed to use 'total_amount' from API
             channelData[source].revenue += (booking.total_amount || 0);
         });
         const bookingsByMonth = Object.values(monthlyData).sort((a, b) => a.monthIndex - b.monthIndex);
@@ -175,7 +172,22 @@ export default function App() {
 
             {/* Main Content Area */}
             <main className="flex-1 p-6 overflow-y-auto">
-                {isLoading ? (
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold text-gray-800">
+                        {activeView === 'dashboard' ? 'Analytics Dashboard' : 'All Bookings'}
+                    </h1>
+                    <button
+                        onClick={fetchBookings}
+                        disabled={isLoading}
+                        className="flex items-center px-4 py-2 text-sm font-semibold text-blue-600 bg-white border border-blue-300 rounded-lg shadow-sm hover:bg-blue-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                        {isLoading ? 'Refreshing...' : 'Refresh'}
+                    </button>
+                </div>
+
+                {/* Only show full-page spinner on initial load */}
+                {isLoading && bookings.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center">
                             <svg className="w-12 h-12 mx-auto text-blue-500 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -193,7 +205,6 @@ export default function App() {
                         {/* Dashboard View */}
                         {activeView === 'dashboard' && processedData.bookingsByMonth && (
                             <div className="space-y-6">
-                                <h1 className="text-3xl font-bold text-gray-800">Analytics Dashboard</h1>
                                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
                                     <StatCard title="Total Revenue" value={`$${(processedData.totalRevenue || 0).toFixed(2)}`} />
                                     <StatCard title="Total Bookings" value={processedData.totalBookings || 0} />
@@ -248,7 +259,6 @@ export default function App() {
                         )}
                         {activeView === 'bookings' && (
                            <div className="p-6 bg-white border rounded-xl shadow">
-                                <h1 className="mb-4 text-2xl font-bold text-gray-800">All Bookings</h1>
                                 <div className="overflow-x-auto">
                                     <table className="min-w-full divide-y divide-gray-200">
                                         <thead className="bg-gray-50">
@@ -261,7 +271,6 @@ export default function App() {
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
-                                            {/* FIX: Sort bookings by arrival date before rendering the table */}
                                             {bookings.slice().sort((a, b) => new Date(a.arrival) - new Date(b.arrival)).map(booking => (
                                                 <tr key={booking.id} className="hover:bg-gray-50">
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{booking.guest?.name || 'N/A'}</td>
