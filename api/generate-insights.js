@@ -1,11 +1,14 @@
 export default async function handler(req, res) {
+  // --- NEW DEBUGGING LINES AT THE VERY TOP ---
+  console.log('--- /api/generate-insights function was invoked ---');
+  console.log(`Request Method: ${req.method}`);
+
   // Ensure this is a POST request
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).end('Method Not Allowed');
   }
 
-  // --- NEW DEBUGGING LINE ---
   // This will show up in your Vercel logs so we can confirm the key is loaded.
   console.log('GEMINI_API_KEY loaded:', process.env.GEMINI_API_KEY ? 'Yes' : 'No');
 
