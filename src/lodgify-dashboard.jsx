@@ -261,12 +261,12 @@ export default function App() {
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
-                                            {bookings.map(booking => (
+                                            {/* FIX: Sort bookings by arrival date before rendering the table */}
+                                            {bookings.slice().sort((a, b) => new Date(a.arrival) - new Date(b.arrival)).map(booking => (
                                                 <tr key={booking.id} className="hover:bg-gray-50">
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{booking.guest?.name || 'N/A'}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{booking.arrival} to {booking.departure}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{booking.source}</td>
-                                                    {/* FIX: Changed to use 'total_amount' from API */}
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(booking.total_amount || 0).toFixed(2)}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${booking.status === 'Booked' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
