@@ -175,11 +175,8 @@ export default function App() {
             
         const userQuery = `Analyze the following vacation rental booking data from ${startDate || 'the beginning'} to ${endDate || 'the end'}. Provide actionable advice. Format your response using markdown with bold headings and bullet points. Analyze revenue channels, seasonal trends, and booking value, then provide 3-5 concrete recommendations. Data: ${JSON.stringify(simplifiedData, null, 2)}`;
 
-        const geminiApiKey = "";
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${geminiApiKey}`;
-
         try {
-            const response = await fetch(apiUrl, {
+            const response = await fetch('/api/generate-insights', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -188,7 +185,11 @@ export default function App() {
                 }),
             });
 
-            if (!response.ok) throw new Error(`Gemini API error: ${response.status}`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `Gemini API error: ${response.status}`);
+            }
+
             const result = await response.json();
             const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
             if (text) setInsights(text); else throw new Error("Received an empty response from the AI.");
