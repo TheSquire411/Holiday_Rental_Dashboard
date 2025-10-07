@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { FileText, BrainCircuit, LayoutDashboard, Hotel, AlertTriangle, RefreshCw, Calendar as CalendarIcon } from 'lucide-react';
+import { FileText, BrainCircuit, LayoutDashboard, Hotel, AlertTriangle, RefreshCw, Calendar as CalendarIcon, Send } from 'lucide-react';
 
 // --- Helper Functions & Constants ---
 
@@ -9,7 +9,8 @@ const parseMarkdown = (text) => {
     return text
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
         .replace(/\*(.*?)\*/g, '<em>$1</em>')     // Italics
-        .replace(/^- (.*)/gm, '<li class="ml-4 list-disc">$1</li>'); // List items
+        .replace(/^- (.*)/gm, '<li class="ml-4 list-disc">$1</li>') // List items
+        .replace(/\n/g, '<br />'); // NEW: Convert newlines to line breaks
 };
 
 // Colors for charts - using a modern, professional palette
@@ -41,6 +42,7 @@ export default function App() {
     const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
     const [insights, setInsights] = useState('');
     const [insightsError, setInsightsError] = useState(null);
+    const [userQuestion, setUserQuestion] = useState(''); // State for the user's question
 
     // --- API & DATA FETCHING ---
     useEffect(() => {
@@ -81,53 +83,39 @@ export default function App() {
 
         // 1. Filter bookings by the selected date range
         const filteredBookings = allBookings.filter(booking => {
-            // If no dates are set, include all bookings
             if (!startDate && !endDate) return true;
-            // If only start date is set
             if (startDate && !endDate) return new Date(booking.arrival) >= new Date(startDate);
-            // If only end date is set
             if (!startDate && endDate) return new Date(booking.arrival) <= new Date(endDate);
-            // If both are set
             return new Date(booking.arrival) >= new Date(startDate) && new Date(booking.arrival) <= new Date(endDate);
         });
 
         const confirmedBookings = filteredBookings.filter(b => b.status === 'Booked');
         const cancelledBookings = filteredBookings.filter(b => b.status === 'Cancelled');
 
-        // 2. Calculate KPIs based on filtered data
+        // 2. Calculate KPIs
         const totalRevenue = confirmedBookings.reduce((acc, b) => acc + (b.total_amount || 0), 0);
         const totalBookings = confirmedBookings.length;
-        const totalNights = confirmedBookings.reduce((acc, b) => {
-             const nights = (new Date(b.departure) - new Date(b.arrival)) / (1000 * 3600 * 24);
-             return acc + (nights > 0 ? nights : 0);
-        }, 0);
-        
+        const totalNights = confirmedBookings.reduce((acc, b) => acc + ((new Date(b.departure) - new Date(b.arrival)) / (1000 * 3600 * 24) || 0), 0);
         const avgBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
         const avgNightlyRate = totalNights > 0 ? totalRevenue / totalNights : 0;
         const avgLengthOfStay = totalBookings > 0 ? totalNights / totalBookings : 0;
-
         const totalLeadTime = confirmedBookings.reduce((acc, b) => {
             if (!b.creation_date) return acc;
-            const creation = new Date(b.creation_date);
-            const arrival = new Date(b.arrival);
-            const leadDays = (arrival - creation) / (1000 * 3600 * 24);
+            const leadDays = (new Date(b.arrival) - new Date(b.creation_date)) / (1000 * 3600 * 24);
             return acc + (leadDays > 0 ? leadDays : 0);
         }, 0);
         const avgLeadTime = totalBookings > 0 ? totalLeadTime / totalBookings : 0;
-
         const cancellationRate = filteredBookings.length > 0 ? (cancelledBookings.length / filteredBookings.length) * 100 : 0;
         
         // 3. Prepare data for charts
         const monthlyData = {};
         const channelData = {};
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
         confirmedBookings.forEach(booking => {
             const month = new Date(booking.arrival).getMonth();
             const monthName = monthNames[month];
             if (!monthlyData[month]) monthlyData[month] = { name: monthName, monthIndex: month, bookings: 0 };
             monthlyData[month].bookings += 1;
-            
             const source = booking.source || 'Unknown';
             if (!channelData[source]) channelData[source] = { name: source, revenue: 0 };
             channelData[source].revenue += (booking.total_amount || 0);
@@ -135,24 +123,19 @@ export default function App() {
         const bookingsByMonth = Object.values(monthlyData).sort((a, b) => a.monthIndex - b.monthIndex);
         const revenueByChannel = Object.values(channelData);
 
-        return { 
-            totalRevenue, 
-            totalBookings, 
-            avgBookingValue, 
-            avgNightlyRate, 
-            bookingsByMonth, 
-            revenueByChannel,
-            totalNights,
-            avgLengthOfStay,
-            avgLeadTime,
-            cancellationRate,
-            filteredBookings // Pass down for the table view
-        };
+        return { totalRevenue, totalBookings, avgBookingValue, avgNightlyRate, bookingsByMonth, revenueByChannel, totalNights, avgLengthOfStay, avgLeadTime, cancellationRate, filteredBookings };
     }, [allBookings, startDate, endDate]);
 
 
     // --- AI INSIGHTS GENERATION ---
-    const generateInsights = async () => {
+    const handleAskAI = async (e) => {
+        e.preventDefault();
+        const question = userQuestion.trim();
+        if (!question) {
+            setInsightsError("Please enter a question.");
+            return;
+        }
+
         if (!processedData.filteredBookings || processedData.filteredBookings.length === 0) {
             setInsightsError("No booking data available in the selected date range to analyze.");
             return;
@@ -162,21 +145,32 @@ export default function App() {
         setInsights('');
         setInsightsError(null);
 
-        const systemPrompt = `You are a world-class hospitality analyst. Analyze the provided booking data for the specified date range and give actionable insights.`;
+        const systemPrompt = `You are a vacation rental data analyst. Your task is to answer questions based ONLY on the provided booking data. Do not make up information. If the data does not contain the answer, state that clearly. Be concise and direct in your answers. **Format your response using markdown with paragraphs, bold headings, and bullet points for clarity.**`;
 
-        const simplifiedData = processedData.filteredBookings
-            .filter(b => b.status === 'Booked')
-            .map(b => ({
-                arrival: b.arrival,
-                nights: (new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24),
-                totalAmount: b.total_amount,
-                source: b.source
-            }));
+        // The AI doesn't need all the raw data, just what's relevant.
+        const simplifiedData = processedData.filteredBookings.map(b => ({
+            arrival: b.arrival,
+            departure: b.departure,
+            nights: (new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24),
+            total_amount: b.total_amount,
+            source: b.source,
+            status: b.status,
+            creation_date: b.creation_date
+        }));
             
-        const userQuery = `Analyze the following vacation rental booking data from ${startDate || 'the beginning'} to ${endDate || 'the end'}. Provide actionable advice. Format your response using markdown with bold headings and bullet points. Analyze revenue channels, seasonal trends, and booking value, then provide 3-5 concrete recommendations. Data: ${JSON.stringify(simplifiedData, null, 2)}`;
+        const userQuery = `
+        Here is the booking data for the selected period in JSON format:
+        ${JSON.stringify(simplifiedData, null, 2)}
+
+        ---
+        Please answer the following question based on the data above:
+        "${question}"
+        `;
+
+        const insightsApiUrl = '/api/generate-insights';
 
         try {
-            const response = await fetch('/api/generate-insights', {
+            const response = await fetch(insightsApiUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -186,8 +180,8 @@ export default function App() {
             });
 
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || `Gemini API error: ${response.status}`);
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Insights API error: ${response.status}`);
             }
 
             const result = await response.json();
@@ -196,9 +190,10 @@ export default function App() {
 
         } catch (err) {
             console.error("Error generating insights:", err);
-            setInsightsError(`Failed to generate insights. ${err.message}`);
+            setInsightsError(`Failed to get an answer. ${err.message}`);
         } finally {
             setIsGeneratingInsights(false);
+            setUserQuestion(''); // Clear the input field
         }
     };
     
@@ -206,36 +201,19 @@ export default function App() {
     return (
         <div className="flex h-screen bg-gray-100 font-sans">
             <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-                <div className="flex items-center justify-center h-16 border-b">
-                    <FileText className="w-8 h-8 text-blue-600" />
-                    <span className="ml-2 text-xl font-bold text-gray-800">Lodgify AI</span>
-                </div>
+                <div className="flex items-center justify-center h-16 border-b"><FileText className="w-8 h-8 text-blue-600" /><span className="ml-2 text-xl font-bold text-gray-800">Lodgify AI</span></div>
                 <nav className="flex-grow p-4 space-y-2">
-                    <a href="#" onClick={() => setActiveView('dashboard')} className={`flex items-center px-4 py-2 text-gray-700 rounded-lg transition-colors ${activeView === 'dashboard' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}>
-                        <LayoutDashboard className="w-5 h-5 mr-3" /> Dashboard
-                    </a>
-                    <a href="#" onClick={() => setActiveView('bookings')} className={`flex items-center px-4 py-2 text-gray-700 rounded-lg transition-colors ${activeView === 'bookings' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}>
-                        <Hotel className="w-5 h-5 mr-3" /> All Bookings
-                    </a>
+                    <a href="#" onClick={() => setActiveView('dashboard')} className={`flex items-center px-4 py-2 text-gray-700 rounded-lg transition-colors ${activeView === 'dashboard' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}><LayoutDashboard className="w-5 h-5 mr-3" /> Dashboard</a>
+                    <a href="#" onClick={() => setActiveView('bookings')} className={`flex items-center px-4 py-2 text-gray-700 rounded-lg transition-colors ${activeView === 'bookings' ? 'bg-blue-100 text-blue-700' : 'hover:bg-gray-100'}`}><Hotel className="w-5 h-5 mr-3" /> All Bookings</a>
                 </nav>
             </aside>
 
             <main className="flex-1 p-6 overflow-y-auto">
                 <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
-                    <h1 className="text-3xl font-bold text-gray-800">
-                        {activeView === 'dashboard' ? 'Analytics Dashboard' : 'All Bookings'}
-                    </h1>
+                    <h1 className="text-3xl font-bold text-gray-800">{activeView === 'dashboard' ? 'Analytics Dashboard' : 'All Bookings'}</h1>
                     <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <CalendarIcon className="w-5 h-5 text-gray-500" />
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="px-2 py-1 text-sm border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
-                            <span className="text-gray-500">-</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-2 py-1 text-sm border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" />
-                        </div>
-                        <button onClick={fetchBookings} disabled={isLoading} className="flex items-center px-4 py-2 text-sm font-semibold text-blue-600 bg-white border border-blue-300 rounded-lg shadow-sm hover:bg-blue-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors">
-                            <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                            {isLoading ? 'Refreshing...' : 'Refresh'}
-                        </button>
+                        <div className="flex items-center gap-2"><CalendarIcon className="w-5 h-5 text-gray-500" /><input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="px-2 py-1 text-sm border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" /><span className="text-gray-500">-</span><input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-2 py-1 text-sm border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" /></div>
+                        <button onClick={fetchBookings} disabled={isLoading} className="flex items-center px-4 py-2 text-sm font-semibold text-blue-600 bg-white border border-blue-300 rounded-lg shadow-sm hover:bg-blue-50 disabled:bg-gray-100 disabled:cursor-not-allowed transition-colors"><RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />{isLoading ? 'Refreshing...' : 'Refresh'}</button>
                     </div>
                 </div>
 
@@ -248,22 +226,19 @@ export default function App() {
                         {activeView === 'dashboard' && processedData.bookingsByMonth && (
                             <div className="space-y-6">
                                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-                                    <StatCard title="Total Revenue" value={`$${(processedData.totalRevenue || 0).toFixed(2)}`} />
-                                    <StatCard title="Total Bookings" value={processedData.totalBookings || 0} />
-                                    <StatCard title="Total Nights Booked" value={processedData.totalNights || 0} />
-                                    <StatCard title="Cancellation Rate" value={`${(processedData.cancellationRate || 0).toFixed(1)}%`} />
-                                    <StatCard title="Avg. Booking Value" value={`$${(processedData.avgBookingValue || 0).toFixed(2)}`} />
-                                    <StatCard title="Avg. Nightly Rate" value={`$${(processedData.avgNightlyRate || 0).toFixed(2)}`} />
-                                    <StatCard title="Avg. Length of Stay" value={`${(processedData.avgLengthOfStay || 0).toFixed(1)} nights`} />
-                                    <StatCard title="Avg. Lead Time" value={`${(processedData.avgLeadTime || 0).toFixed(1)} days`} />
+                                    <StatCard title="Total Revenue" value={`$${(processedData.totalRevenue || 0).toFixed(2)}`} /><StatCard title="Total Bookings" value={processedData.totalBookings || 0} /><StatCard title="Total Nights Booked" value={processedData.totalNights || 0} /><StatCard title="Cancellation Rate" value={`${(processedData.cancellationRate || 0).toFixed(1)}%`} /><StatCard title="Avg. Booking Value" value={`$${(processedData.avgBookingValue || 0).toFixed(2)}`} /><StatCard title="Avg. Nightly Rate" value={`$${(processedData.avgNightlyRate || 0).toFixed(2)}`} /><StatCard title="Avg. Length of Stay" value={`${(processedData.avgLengthOfStay || 0).toFixed(1)} nights`} /><StatCard title="Avg. Lead Time" value={`${(processedData.avgLeadTime || 0).toFixed(1)} days`} />
                                 </div>
                                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
                                     <div className="lg:col-span-3 p-4 bg-white border rounded-xl shadow"><h3 className="font-semibold text-gray-700">Bookings per Month</h3><ResponsiveContainer width="100%" height={300}><BarChart data={processedData.bookingsByMonth} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip wrapperClassName="rounded-md border bg-white shadow-sm" /><Bar dataKey="bookings" fill="#3b82f6" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div>
                                     <div className="lg:col-span-2 p-4 bg-white border rounded-xl shadow"><h3 className="font-semibold text-gray-700">Revenue by Channel</h3><ResponsiveContainer width="100%" height={300}><PieChart><Pie data={processedData.revenueByChannel} dataKey="revenue" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>{processedData.revenueByChannel.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}</Pie><Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} /><Legend /></PieChart></ResponsiveContainer></div>
                                 </div>
                                 <div className="p-6 bg-white border rounded-xl shadow">
-                                    <div className="flex items-center justify-between mb-4"><div className="flex items-center"><BrainCircuit className="w-8 h-8 text-purple-600" /><h2 className="ml-3 text-2xl font-bold text-gray-800">AI-Powered Insights</h2></div><button onClick={generateInsights} disabled={isGeneratingInsights} className="px-4 py-2 font-semibold text-white bg-purple-600 rounded-lg shadow-md hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-all duration-200 flex items-center">{isGeneratingInsights && <svg className="w-5 h-5 mr-2 -ml-1 text-white animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}{isGeneratingInsights ? 'Analyzing...' : 'Generate Insights'}</button></div>
-                                    <div className="p-4 mt-4 bg-gray-50 rounded-lg min-h-[150px] prose prose-sm max-w-none">{isGeneratingInsights && <p className="text-gray-500">The AI is analyzing your data...</p>}{insightsError && <p className="text-red-600">{insightsError}</p>}{insights && <div dangerouslySetInnerHTML={{ __html: parseMarkdown(insights) }} />}{!isGeneratingInsights && !insights && !insightsError && <p className="text-gray-500">Click "Generate Insights" for an AI analysis of the selected date range.</p>}</div>
+                                    <div className="flex items-center mb-4"><BrainCircuit className="w-8 h-8 text-purple-600" /><h2 className="ml-3 text-2xl font-bold text-gray-800">Ask a Question About Your Bookings</h2></div>
+                                    <div className="p-4 bg-gray-50 rounded-lg min-h-[150px] prose prose-sm max-w-none">{isGeneratingInsights && <p className="text-gray-500">The AI is thinking...</p>}{insightsError && <p className="text-red-600">{insightsError}</p>}{insights && <div dangerouslySetInnerHTML={{ __html: parseMarkdown(insights) }} />}{!isGeneratingInsights && !insights && !insightsError && <p className="text-gray-500">Ask a question like "How many bookings did I get from Airbnb?" or "What was my total revenue in October?" for the selected date range.</p>}</div>
+                                    <form onSubmit={handleAskAI} className="flex items-center gap-2 mt-4">
+                                        <input type="text" value={userQuestion} onChange={e => setUserQuestion(e.target.value)} placeholder="Ask your question..." className="flex-grow w-full px-3 py-2 text-gray-800 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                        <button type="submit" disabled={isGeneratingInsights} className="px-4 py-2 font-semibold text-white bg-purple-600 rounded-lg shadow-md hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed flex items-center"><Send className="w-4 h-4 mr-2" />{isGeneratingInsights ? 'Asking...' : 'Ask'}</button>
+                                    </form>
                                 </div>
                             </div>
                         )}
@@ -303,4 +278,5 @@ const StatCard = ({ title, value }) => (
         <p className="mt-1 text-2xl font-bold text-gray-800">{value}</p>
     </div>
 );
+
 
