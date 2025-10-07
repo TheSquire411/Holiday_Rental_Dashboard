@@ -18,10 +18,10 @@ const COLORS = ['#3b82f6', '#8b5cf6', '#ef4444', '#10b981', '#f97316', '#ec4899'
 // --- MOCK DATA ---
 // This sample data is used if the API call fails, allowing the UI to still be viewed.
 const MOCK_BOOKINGS = [
-    { id: 1, guest: { name: 'John Doe' }, arrival: '2024-01-15', departure: '2024-01-20', totalAmount: 500, source: 'Airbnb', status: 'Booked' },
-    { id: 2, guest: { name: 'Jane Smith' }, arrival: '2024-02-10', departure: '2024-02-15', totalAmount: 650, source: 'Booking.com', status: 'Booked' },
-    { id: 3, guest: { name: 'Peter Jones' }, arrival: '2024-02-20', departure: '2024-02-25', totalAmount: 550, source: 'Direct', status: 'Booked' },
-    { id: 4, guest: { name: 'Mary Williams' }, arrival: '2024-03-05', departure: '2024-03-10', totalAmount: 700, source: 'Airbnb', status: 'Booked' },
+    { id: 1, guest: { name: 'John Doe' }, arrival: '2024-01-15', departure: '2024-01-20', total_amount: 500, source: 'Airbnb', status: 'Booked' },
+    { id: 2, guest: { name: 'Jane Smith' }, arrival: '2024-02-10', departure: '2024-02-15', total_amount: 650, source: 'Booking.com', status: 'Booked' },
+    { id: 3, guest: { name: 'Peter Jones' }, arrival: '2024-02-20', departure: '2024-02-25', total_amount: 550, source: 'Direct', status: 'Booked' },
+    { id: 4, guest: { name: 'Mary Williams' }, arrival: '2024-03-05', departure: '2024-03-10', total_amount: 700, source: 'Airbnb', status: 'Booked' },
 ];
 
 
@@ -48,8 +48,6 @@ export default function App() {
         setError(null);
         
         // --- PRODUCTION-READY API CALL ---
-        // This URL points to the serverless function. Vercel automatically knows
-        // how to route this request to the /api/bookings.js file.
         const API_PROXY_URL = '/api/bookings';
 
         try {
@@ -92,7 +90,8 @@ export default function App() {
             .map(b => ({
                 arrival: b.arrival,
                 nights: (new Date(b.departure) - new Date(b.arrival)) / (1000 * 60 * 60 * 24),
-                totalAmount: b.totalAmount,
+                // FIX: Changed to use 'total_amount' from API
+                totalAmount: b.total_amount,
                 source: b.source
             }));
             
@@ -128,7 +127,10 @@ export default function App() {
     const processedData = useMemo(() => {
         if (!bookings) return {}; // Guard against null/undefined bookings
         const confirmedBookings = bookings.filter(b => b.status === 'Booked');
-        const totalRevenue = confirmedBookings.reduce((acc, b) => acc + b.totalAmount, 0);
+        
+        // FIX: Changed to use 'total_amount' from API
+        const totalRevenue = confirmedBookings.reduce((acc, b) => acc + (b.total_amount || 0), 0);
+        
         const totalNights = confirmedBookings.reduce((acc, b) => acc + ((new Date(b.departure) - new Date(b.arrival)) / (1000 * 3600 * 24)), 0);
         const totalBookings = confirmedBookings.length;
         const avgBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
@@ -143,7 +145,9 @@ export default function App() {
             monthlyData[month].bookings += 1;
             const source = booking.source || 'Unknown';
             if (!channelData[source]) channelData[source] = { name: source, revenue: 0 };
-            channelData[source].revenue += booking.totalAmount;
+            
+            // FIX: Changed to use 'total_amount' from API
+            channelData[source].revenue += (booking.total_amount || 0);
         });
         const bookingsByMonth = Object.values(monthlyData).sort((a, b) => a.monthIndex - b.monthIndex);
         const revenueByChannel = Object.values(channelData);
@@ -181,7 +185,7 @@ export default function App() {
                 ) : (
                     <>
                         {error && (
-                            <div className="p-4 mb-4 text-sm text-yellow-800 bg-yellow-10 toning-800 border border-yellow-300 rounded-lg flex items-center" role="alert">
+                            <div className="p-4 mb-4 text-sm text-yellow-800 bg-yellow-100 border border-yellow-300 rounded-lg flex items-center" role="alert">
                                 <AlertTriangle className="w-5 h-5 mr-3" />
                                 <div><span className="font-medium">Warning:</span> {error}</div>
                             </div>
@@ -203,7 +207,7 @@ export default function App() {
                                             <BarChart data={processedData.bookingsByMonth} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                 <XAxis dataKey="name" />
-                                                <YAxis allowDecimals={false} />
+                                                <YAxis allowDecals={false} />
                                                 <Tooltip wrapperClassName="rounded-md border bg-white shadow-sm" />
                                                 <Bar dataKey="bookings" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                                             </BarChart>
@@ -262,7 +266,8 @@ export default function App() {
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{booking.guest?.name || 'N/A'}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{booking.arrival} to {booking.departure}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{booking.source}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(booking.totalAmount || 0).toFixed(2)}</td>
+                                                    {/* FIX: Changed to use 'total_amount' from API */}
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(booking.total_amount || 0).toFixed(2)}</td>
                                                     <td className="px-6 py-4 whitespace-nowrap">
                                                         <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${booking.status === 'Booked' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
                                                             {booking.status}
